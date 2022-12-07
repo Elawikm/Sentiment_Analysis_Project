@@ -1,0 +1,147 @@
+---
+title: "SGSF Sentiment Analysis"
+author: "Marwa El Awik"
+date: '2022-11-15'
+output: 
+  html_document: 
+    fig_width: 8
+    fig_height: 5
+    code_folding: hide
+---
+<style type="text/css">
+ body{font-size:11pt;
+ }
+</style>
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE)
+```
+
+```{r packages, message=FALSE,echo=TRUE}
+library(dplyr)
+library(plyr)
+library(tidytext)
+library(gutenbergr)
+library(wordcloud)
+library(ggplot2)
+library(syuzhet)
+library(tidytext)
+library(stringr)
+```
+
+#### <B> About Dataset</B>
+
+<div> The dataset refers to 18 SUPERGirls of SGSF Foundation. It includes data collected from
+a survey filled out by those Girls.  Every SUPERGirl provided us with her first Name, last Name, home Address, email, cell phone number, date of birth, race or ethnicity, age,current grade,the name of the school that she is currently attending, her preferred mentor, her professional interest or expertise, if she has or has not reliable transportation in case she needs to meet her mentor, if she had a mentoring role before, her language proficiency, her classification, her major/minor or certifications,  also, she answered many questions.</div>
+
+<br>
+
+Looking ahead, of interest for the SUPERGirls SHINE Foundation will be to apply a sentiment analysis based on the SUPERGirls expectations from the mentorship program. 
+
+
+<br>
+
+Here is a glimpse of what we will be working with. 
+
+<br>
+
+```{r , message=FALSE,echo=TRUE}
+df<- readr::read_csv("SGSF_Mentor_Mentee_Matching_For2022-10-27_13_05_29.csv")
+head(df)
+```
+
+<div> For this project, we are no going to dive deeper into cleaning the data, our main focus will be on the text columns only and particularly on the question: 
+"What are you expectations in this mentoring program" </div>
+
+<br>
+
+<div> In the first step, we will extract this text column from the dataset. Then we will start cleaning it by removing the undesirable words, especially mentioned in the question: "mentor", "Mentor", "mentoring", "Mentoring", "Program", "program". 
+
+<div> After that, we will extract the words out of the sentences, and get only the words other then the undesired words, also we will get rid of the stop words using the "tidytext package" and  those words that are less than 3 words such as "I", and finally we will get the counts of the words </div>
+
+```{r, message=FALSE,echo=TRUE}
+
+text.df<- tibble(text=str_to_lower(df$`What are your expectations in this Mentoring program`))
+
+undesirable_words <- c("mentor", "Mentor", "mentoring", "Mentoring","expectations",
+                       "Program", "program")
+
+SGSF_Words<-text.df %>% 
+  unnest_tokens(word, text) %>%
+  filter(!word %in% undesirable_words)%>%
+  filter(!nchar(word) < 3)%>%
+  anti_join(stop_words) %>% 
+  dplyr::count(word, sort=TRUE)
+
+head(SGSF_Words,10)
+```
+
+<div> Now, we will assign every word into NRC lexicon categories: positive, negative, anger, anticipation, disgust, fear, joy, sadness, surprise, and trust by inner joining the words that we got previously with the NRC sentiments dataset provided by the tidytext package.</div>
+
+```{r, message=FALSE,echo=TRUE}
+
+SG_nrc <- SGSF_Words %>%
+  inner_join(get_sentiments("nrc"))
+SG_nrc
+```
+
+Lets visualize our SUPERGirls sentiments.
+
+```{r, message=FALSE,echo=TRUE}
+
+SG_nrc_plot <- SG_nrc %>%
+  group_by(sentiment) %>%
+  dplyr::summarise(word_count = dplyr::n()) %>%
+  ungroup() %>%
+  mutate(sentiment = reorder(sentiment, word_count)) %>%
+  ggplot(aes(sentiment, word_count, fill = sentiment)) +
+  geom_bar(stat = 'identity') +
+  guides(fill = FALSE) + 
+  theme_classic() +
+  labs(x = NULL, y = "Word Count") + 
+  ggtitle("SUPERGirls NRC Sentiment") +
+  geom_text(aes(label = signif(round(word_count/sum(word_count)*100),2)),position=position_dodge(0.9),vjust = -1, size=3)+
+  coord_flip()
+SG_nrc_plot
+```
+
+<div> The above plot shows that the majority of the words (43% of the words) refer to the positive category, followed by the trust category (23%) and the anticipation (15%). Only 2% of the words used by the SGSF  girls refer to sadness and 2% refers to negative feelings.</div> 
+
+Lets look at the words for each category.
+
+```{r, message=FALSE,echo=TRUE}
+
+SGSF_Words %>%
+  distinct(word) %>%
+  inner_join(get_sentiments("nrc")) %>%
+  ggplot(aes(x = word, fill = sentiment)) +
+  facet_grid(~sentiment) +
+  geom_bar() + 
+  guides(fill = FALSE) + 
+  theme_classic() +
+  theme(panel.grid.major.x = element_blank(),
+        axis.text.x = element_blank()) + 
+  xlab(NULL) + ylab(NULL) +
+  ggtitle("SUPERGirls Words") +
+  coord_flip()
+```
+
+<div> In the final part, we will get a wordcloud that represents the words with the highest frequency to the least frequency. </div>
+
+```{r, message=FALSE,echo=TRUE}
+SGSF_Wordcloud <- SG_nrc %>%
+  group_by(sentiment) %>%
+  dplyr::summarise(word_count = n()) %>%
+  ungroup() %>%
+  mutate(sentiment = reorder(sentiment, word_count))
+
+Cloud1<-SGSF_Words %>% with(wordcloud(word, n, 
+                                   min.freq=10, 
+                                   random.order=FALSE,
+                                   colors=brewer.pal(8, "Dark2")))
+```
+
+
+
